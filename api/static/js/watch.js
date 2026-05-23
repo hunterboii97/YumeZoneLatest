@@ -494,7 +494,29 @@ function onHlsFatal() {
         _isFallbackInProgress = true;
         fetchAndLoadSources(true);
     } else {
-        showNoSourcesMessage();
+        // All HLS providers exhausted — try embed fallback
+        // Clear desired stream type so embed sources are accepted
+        if (window._watchState) {
+            window._watchState._desiredStreamType = 'embed';
+        }
+        // Find any provider that hasn't fully failed (might have embed)
+        var embedNext = getNextAvailableProvider(cur);
+        if (!embedNext) {
+            // Also check the current provider itself — it might have embed
+            // even though HLS failed (only marked as X::hls, not fully failed)
+            if (!isProviderFullyFailed(cur) && !isProviderFailedForType(cur, 'embed')) {
+                embedNext = cur;
+            }
+        }
+        if (embedNext) {
+            var embedName = PROVIDER_DISPLAY_NAMES[embedNext] || embedNext;
+            showToast('HLS unavailable — trying <strong>' + embedName + '</strong> embed', 'info');
+            window._watchState.provider = embedNext;
+            _isFallbackInProgress = true;
+            fetchAndLoadSources(true);
+        } else {
+            showNoSourcesMessage();
+        }
     }
 }
 
@@ -740,10 +762,11 @@ function applyVideoSources(data) {
     var desired      = window._watchState && window._watchState._desiredStreamType;
     var useEmbed     = false;
 
-    if      (desired === 'hls')                     useEmbed = false;
+    if      (desired === 'hls' && hlsSources.length)     useEmbed = false;
+    else if (desired === 'hls' && embedSources.length)   useEmbed = true;  // HLS desired but unavailable — fall back to embed
     else if (desired === 'embed' && embedSources.length) useEmbed = true;
-    else if (hlsSources.length)                     useEmbed = false;
-    else if (embedSources.length)                   useEmbed = true;
+    else if (hlsSources.length)                          useEmbed = false;
+    else if (embedSources.length)                        useEmbed = true;
 
     var errEl = document.getElementById('errorFallbackContainer');
     if (errEl) errEl.style.display = 'none';
@@ -751,7 +774,8 @@ function applyVideoSources(data) {
     if (!useEmbed && hlsSources.length) {
         var url = hlsSources[0].file || hlsSources[0].url;
         if (url) playHLS(proxyUrl(url, ''), hlsSources);
-    } else if (useEmbed && embedSources.length) {
+    } else if (embedSources.length) {
+        // Use embed sources — either explicitly desired or as fallback
         playEmbed(embedSources[0].url);
     } else {
         showNoSourcesMessage();
@@ -773,8 +797,13 @@ function fetchAndLoadSources(isAutoFallback) {
     .then(function(data) {
         const hasHls   = (data.hls_sources   || []).length > 0;
         const hasEmbed = (data.embed_sources || []).length > 0;
+        const desiredType = state._desiredStreamType;
 
-        if (data.error || (!hasHls && !hasEmbed)) {
+        // If we wanted HLS but only got embed, that's still usable — don't treat as failure
+        var effectivelyEmpty = !hasHls && !hasEmbed;
+        var desiredMissing   = desiredType === 'hls' && !hasHls && !hasEmbed;
+
+        if (data.error || effectivelyEmpty) {
             markProviderFailed(curProv);
             const next = getNextAvailableProvider(curProv);
             if (next) {
@@ -783,6 +812,25 @@ function fetchAndLoadSources(isAutoFallback) {
                 _isFallbackInProgress = true;
                 fetchAndLoadSources(true);
                 return;
+            }
+            // All providers exhausted for current desired type
+            // If we were looking for HLS, retry with embed from any provider
+            if (desiredType === 'hls') {
+                state._desiredStreamType = 'embed';
+                // Reset the failed providers for embed — they only failed for HLS
+                // (fully-failed providers stay failed)
+                var embedNext = getNextAvailableProvider(curProv);
+                if (!embedNext && !isProviderFullyFailed(curProv) && !isProviderFailedForType(curProv, 'embed')) {
+                    embedNext = curProv;
+                }
+                if (embedNext) {
+                    var embedName = PROVIDER_DISPLAY_NAMES[embedNext] || embedNext;
+                    showToast('HLS unavailable — trying <strong>' + embedName + '</strong> embed', 'info');
+                    state.provider = embedNext;
+                    _isFallbackInProgress = true;
+                    fetchAndLoadSources(true);
+                    return;
+                }
             }
             _isFallbackInProgress = false;
             showNoSourcesMessage();
