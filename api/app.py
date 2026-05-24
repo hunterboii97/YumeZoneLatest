@@ -15,6 +15,7 @@ from api.routes.shared.admin_routes import admin_bp
 from api.routes.manga import manga_routes_bp, manga_api_bp
 from api.routes.shared import auth_bp, watchlist_bp, api_bp, home_routes_bp, search_routes_bp
 from api.core.extensions import limiter
+from api.utils.client_detection import is_obvious_bot_user_agent
 
 _RE_STRIP_ANIME_ID = re.compile(r'-\d+$')
 
@@ -22,15 +23,6 @@ _RE_STRIP_ANIME_ID = re.compile(r'-\d+$')
 # Set to True to put the entire site into maintenance mode.
 # All routes will display the announcement page instead of normal content.
 URGENT_ANNOUNCEMENT = False
-
-HEADLESS_PATTERNS = [
-    r"headless", r"phantom", r"selenium", r"puppeteer",
-    r"playwright", r"chromium", r"firefox.*headless",
-    r"chrome.*headless", r"wpdt", r"webdriver",
-    r"python-requests", r"go-http-client", r"curl", r"wget",
-    r"scrapy", r"httpclient", r"libwww", r"jakarta", r"httpx",
-]
-
 
 def create_app():
     app = Flask(__name__, instance_relative_config=False)
@@ -131,8 +123,8 @@ def create_app():
     def block_obvious_bots():
         if request.path.startswith('/static/'):
             return
-        ua = request.headers.get('User-Agent', '').lower()
-        if not ua or any(re.search(p, ua) for p in HEADLESS_PATTERNS):
+        ua = request.headers.get('User-Agent', '')
+        if is_obvious_bot_user_agent(ua):
             app.logger.warning(f"Blocked bot UA='{ua[:80]}' PATH={request.path} IP={request.remote_addr}")
             abort(403)
 
