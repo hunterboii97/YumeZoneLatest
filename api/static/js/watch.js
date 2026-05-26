@@ -134,7 +134,6 @@ function buildCustomPlayer(playerArea, video) {
   <div id="yz-sett-main">
     <button class="yz-sett-row" id="yz-speed-row"><span>Speed</span><span id="yz-cur-speed" class="yz-sett-val">1x</span></button>
     <button class="yz-sett-row" id="yz-qual-row" style="display:none"><span>Quality</span><span id="yz-cur-qual" class="yz-sett-val">Auto</span></button>
-    <button class="yz-sett-row" id="yz-skip-row"><span>Skip Intro/Outro</span><span id="yz-cur-skip" class="yz-sett-val">Off</span></button>
   </div>
   <div id="yz-sett-speed" style="display:none">
     <button class="yz-sett-back" id="yz-speed-back">&#8592; Speed</button>
@@ -196,8 +195,7 @@ function attachPlayerControls(shell, vid) {
           curQualLbl  = g('yz-cur-qual'),  qualRow   = g('yz-qual-row'),
           fsBtn       = g('yz-fs-btn'),    overlay   = g('yz-overlay'),
           pauseFlash  = g('yz-pause-flash'),back10   = g('yz-back10'),
-          fwd10       = g('yz-fwd10'),
-          skipRow     = g('yz-skip-row'),  curSkipLbl = g('yz-cur-skip');
+          fwd10       = g('yz-fwd10');
 
     const cfg = window.WATCH_CONFIG || {};
     let skipTarget = null;
@@ -307,7 +305,19 @@ function attachPlayerControls(shell, vid) {
             }
         } catch{} 
     }, {once:true});
-    vid.addEventListener('ended',   ()=>{ try{localStorage.removeItem(resumeKey);}catch{} });
+    vid.addEventListener('ended',   ()=>{ 
+        try{localStorage.removeItem(resumeKey);}catch{} 
+        const autoplay = localStorage.getItem('yume_autoplay') === 'true';
+        if (autoplay) {
+            const nextBtn = document.getElementById('next-episode-btn');
+            if (nextBtn && nextBtn.getAttribute('href') && nextBtn.getAttribute('href') !== 'javascript:void(0)') {
+                showToast('Autoplaying next episode...', 'info');
+                setTimeout(() => {
+                    nextBtn.click();
+                }, 1000);
+            }
+        }
+    });
     vid.addEventListener('pause',   ()=>{ 
         if(vid.currentTime>3&&vid.duration&&(vid.duration-vid.currentTime)>5) { 
             try{localStorage.setItem(resumeKey,Math.floor(vid.currentTime));}catch{} 
@@ -416,19 +426,7 @@ function attachPlayerControls(shell, vid) {
     document.addEventListener('click', e=>{ if(settPanel&&!settPanel.contains(e.target)&&!settBtn?.contains(e.target)) settPanel.style.display='none'; }, true);
     settPanel?.addEventListener('click', e=>e.stopPropagation());
 
-    // Initialize Auto Skip setting
-    if (curSkipLbl) {
-        const autoSkip = localStorage.getItem('yume_skip_intro') === 'true';
-        curSkipLbl.textContent = autoSkip ? 'On' : 'Off';
-    }
-    skipRow?.addEventListener('click', e => {
-        e.stopPropagation();
-        const current = localStorage.getItem('yume_skip_intro') === 'true';
-        const newVal = !current;
-        localStorage.setItem('yume_skip_intro', newVal ? 'true' : 'false');
-        if (curSkipLbl) curSkipLbl.textContent = newVal ? 'On' : 'Off';
-        showToast('Auto Skip ' + (newVal ? 'Enabled' : 'Disabled'), 'success');
-    });
+
 
     // Speed options
     if (speedOpts) {
@@ -472,6 +470,13 @@ function attachPlayerControls(shell, vid) {
 
     syncPlay(); syncMute();
     if (volSlider) { volSlider.value=vid.muted?0:vid.volume; volSlider.style.setProperty('--pct',(vid.muted?0:vid.volume*100)+'%'); }
+    
+    // Handle Native controls initial state
+    const isNative = localStorage.getItem('yume_native_player') === 'true';
+    if (isNative && vid) {
+        vid.controls = true;
+        if (controls) controls.style.display = 'none';
+    }
 }
 // ── playHLS ───────────────────────────────────────────────────────
 function playHLS(rawUrl, allStreams, options) {
@@ -484,9 +489,10 @@ function playHLS(rawUrl, allStreams, options) {
     options = options || {};
     if (hlsInstance) { hlsInstance.destroy(); hlsInstance = null; }
 
+    const isAutoplayEnabled = localStorage.getItem('yume_player_autoplay') !== 'false';
     const video = document.createElement('video');
     video.crossOrigin = 'anonymous';
-    video.autoplay    = true;
+    video.autoplay    = isAutoplayEnabled;
     video.playsInline = true;
     buildCustomPlayer(playerArea, video);
 
@@ -519,7 +525,9 @@ function playHLS(rawUrl, allStreams, options) {
         });
 
         hlsInstance.on(Hls.Events.MANIFEST_PARSED, function(_, data) {
-            vid.play().catch(function(){});
+            if (isAutoplayEnabled) {
+                vid.play().catch(function(){});
+            }
             if (shell && shell._buildQuality && data.levels && data.levels.length > 1) {
                 var seen = new Set();
                 var levels = data.levels
@@ -539,10 +547,14 @@ function playHLS(rawUrl, allStreams, options) {
 
     } else if (!isHls) {
         vid.src = rawUrl;
-        vid.play().catch(function(){});
+        if (isAutoplayEnabled) {
+            vid.play().catch(function(){});
+        }
     } else if (vid.canPlayType('application/vnd.apple.mpegurl')) {
         vid.src = rawUrl;
-        vid.play().catch(function(){});
+        if (isAutoplayEnabled) {
+            vid.play().catch(function(){});
+        }
     } else {
         playerArea.innerHTML = '<div style="color:#94a3b8;text-align:center;padding:40px;">HLS not supported in this browser.</div>';
     }
@@ -1206,8 +1218,148 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 
+function initWatchQuickBar() {
+    const autoplayToggle = document.getElementById('q-autoplay');
+    const autoskipToggle = document.getElementById('q-autoskip');
+    const autonextToggle = document.getElementById('q-autonext');
+    
+    const chkAutoplay = document.getElementById('chk-autoplay');
+    const chkAutoskip = document.getElementById('chk-autoskip');
+    const chkAutonext = document.getElementById('chk-autonext');
+
+    // Load initial states from localStorage
+    // 1. Autoplay player on load
+    const isAutoplay = localStorage.getItem('yume_player_autoplay') !== 'false'; // default to true
+    if (chkAutoplay) {
+        chkAutoplay.checked = isAutoplay;
+        autoplayToggle.classList.toggle('active', isAutoplay);
+    }
+    
+    // 2. Auto Skip Intro/Outro
+    const isAutoskip = localStorage.getItem('yume_skip_intro') === 'true'; // default to false
+    if (chkAutoskip) {
+        chkAutoskip.checked = isAutoskip;
+        autoskipToggle.classList.toggle('active', isAutoskip);
+    }
+    
+    // 3. Auto Next Episode
+    const isAutonext = localStorage.getItem('yume_autoplay') === 'true'; // default to false
+    if (chkAutonext) {
+        chkAutonext.checked = isAutonext;
+        autonextToggle.classList.toggle('active', isAutonext);
+    }
+
+    // Toggle click listeners
+    autoplayToggle?.addEventListener('click', e => {
+        e.preventDefault();
+        const newVal = !chkAutoplay.checked;
+        chkAutoplay.checked = newVal;
+        localStorage.setItem('yume_player_autoplay', newVal ? 'true' : 'false');
+        autoplayToggle.classList.toggle('active', newVal);
+        
+        // Update actual video autoplay attribute if video exists
+        const vid = document.getElementById('yz-video');
+        if (vid) vid.autoplay = newVal;
+        
+        showToast('Autoplay ' + (newVal ? 'Enabled' : 'Disabled'), 'success');
+    });
+
+    autoskipToggle?.addEventListener('click', e => {
+        e.preventDefault();
+        const newVal = !chkAutoskip.checked;
+        chkAutoskip.checked = newVal;
+        localStorage.setItem('yume_skip_intro', newVal ? 'true' : 'false');
+        autoskipToggle.classList.toggle('active', newVal);
+        
+        // Sync with gear player settings menu if visible
+        const playerCurSkipLbl = document.getElementById('yz-cur-skip');
+        if (playerCurSkipLbl) playerCurSkipLbl.textContent = newVal ? 'On' : 'Off';
+        
+        showToast('Auto Skip ' + (newVal ? 'Enabled' : 'Disabled'), 'success');
+    });
+
+    autonextToggle?.addEventListener('click', e => {
+        e.preventDefault();
+        const newVal = !chkAutonext.checked;
+        chkAutonext.checked = newVal;
+        localStorage.setItem('yume_autoplay', newVal ? 'true' : 'false');
+        autonextToggle.classList.toggle('active', newVal);
+        
+        // Sync with gear player settings menu if visible
+        const playerCurAutoplayLbl = document.getElementById('yz-cur-autoplay');
+        if (playerCurAutoplayLbl) playerCurAutoplayLbl.textContent = newVal ? 'On' : 'Off';
+        
+        showToast('Auto Play ' + (newVal ? 'Enabled' : 'Disabled'), 'success');
+    });
+
+    // ── Shortcuts Modal ──
+    const btnShortcuts = document.getElementById('btn-shortcuts');
+    const modalShortcuts = document.getElementById('shortcuts-modal');
+    const closeShortcutsModal = document.getElementById('close-shortcuts-modal');
+    const closeShortcutsBackdrop = document.getElementById('close-shortcuts-backdrop');
+
+    if (btnShortcuts && modalShortcuts) {
+        btnShortcuts.addEventListener('click', () => {
+            modalShortcuts.style.display = 'flex';
+            document.body.style.overflow = 'hidden';
+        });
+
+        const closeShortcuts = () => {
+            modalShortcuts.style.display = 'none';
+            document.body.style.overflow = '';
+        };
+
+        closeShortcutsModal?.addEventListener('click', closeShortcuts);
+        closeShortcutsBackdrop?.addEventListener('click', closeShortcuts);
+    }
+
+    // ── Lights Off ──
+    const btnLightsOff = document.getElementById('btn-lightsoff');
+    const lightsOffOverlay = document.getElementById('lights-off-overlay');
+
+    if (btnLightsOff) {
+        let isLightsOff = false;
+        
+        const toggleLights = () => {
+            isLightsOff = !isLightsOff;
+            document.body.classList.toggle('lights-off-active', isLightsOff);
+            btnLightsOff.classList.toggle('active', isLightsOff);
+            
+            showToast('Cinematic Lights ' + (isLightsOff ? 'Off' : 'On'), 'success');
+        };
+
+        btnLightsOff.addEventListener('click', toggleLights);
+        lightsOffOverlay?.addEventListener('click', toggleLights);
+    }
+
+    // ── Native Player ──
+    const btnNative = document.getElementById('btn-native');
+    if (btnNative) {
+        const isNative = localStorage.getItem('yume_native_player') === 'true';
+        btnNative.classList.toggle('active', isNative);
+
+        btnNative.addEventListener('click', () => {
+            const newVal = !btnNative.classList.contains('active');
+            btnNative.classList.toggle('active', newVal);
+            localStorage.setItem('yume_native_player', newVal ? 'true' : 'false');
+            showToast('Native Controls ' + (newVal ? 'Enabled (refresh to apply)' : 'Disabled (refresh to apply)'), 'success');
+            
+            // Apply immediately if video exists
+            const vid = document.getElementById('yz-video');
+            if (vid) {
+                vid.controls = newVal;
+                // Hide custom player controls if native is active
+                const ctrls = document.getElementById('yz-controls');
+                if (ctrls) ctrls.style.display = newVal ? 'none' : '';
+            }
+        });
+    }
+}
+
+
 // ── DOMContentLoaded — init everything ───────────────────────────
 document.addEventListener('DOMContentLoaded', function() {
+    initWatchQuickBar();
     var cfg = window.WATCH_CONFIG || {};
     
     // Decrypt initial sources if present

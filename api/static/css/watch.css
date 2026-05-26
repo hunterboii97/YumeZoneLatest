@@ -2911,3 +2911,161 @@ media-player [data-media-buffering] media-buffering-indicator circle {
     .yz-buf-bar, .yz-play-bar { height: 4px; }
     .yz-skip-btn { bottom: 60px; right: 10px; font-size: .78rem; padding: 6px 14px; }
 }
+
+/* ── Sleek Top Quick Settings & Navigation Bar ── */
+.watch-quick-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: #0c0c0e;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 8px;
+    padding: 10px 16px;
+    margin-top: 15px;
+    margin-bottom: 15px;
+    font-size: 0.82rem;
+    font-weight: 500;
+    color: #8a8a93;
+    user-select: none;
+    font-family: inherit;
+}
+
+.quick-bar-left {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    flex-wrap: wrap;
+}
+
+.quick-bar-right {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+}
+
+/* Toggles styling */
+.quick-toggle {
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    transition: color 0.2s;
+    user-select: none;
+}
+
+.quick-toggle input {
+    display: none;
+}
+
+.quick-toggle .indicator {
+    width: 8px;
+    height: 8px;
+    border-radius: 1px;
+    background: #2a2a30;
+    margin-right: 6px;
+    transition: background-color 0.2s, box-shadow 0.2s;
+    display: inline-block;
+}
+
+.quick-toggle:hover {
+    color: #cbd5e1;
+}
+
+.quick-toggle.active {
+    color: #ffffff; /* Sleek active white color */
+}
+
+.quick-toggle.active .indicator {
+    background: #ffffff;
+    box-shadow: 0 0 8px rgba(255, 255, 255, 0.6);
+}
+
+.quick-btn {
+    background: none;
+    border: none;
+    color: #8a8a93;
+    padding: 0;
+    font-size: 0.82rem;
+    font-family: inherit;
+    font-weight: 500;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    transition: color 0.2s;
+}
+
+.quick-btn:hover {
+    color: #cbd5e1;
+}
+
+.quick-btn.active {
+    color: #ffffff; /* Sleek active white color */
+}
+
+/* Nav links styling */
+.quick-nav-link {
+    color: #8a8a93;
+    text-decoration: none;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    transition: color 0.2s;
+}
+
+.quick-nav-link:hover:not(.disabled) {
+    color: #ffffff;
+}
+
+.quick-nav-link.disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
+.quick-current-ep {
+    color: #ffffff;
+    font-weight: 600;
+}
+
+/* Lights Off overlay */
+.lights-off-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.94);
+    z-index: 9990;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.35s ease;
+}
+
+body.lights-off-active .lights-off-overlay {
+    pointer-events: auto;
+    opacity: 1;
+}
+
+body.lights-off-active #video-wrapper,
+body.lights-off-active #player-area,
+body.lights-off-active .yz-player {
+    position: relative;
+    z-index: 9995 !important;
+    box-shadow: 0 10px 50px rgba(0, 0, 0, 0.85);
+}
+
+@media (max-width: 768px) {
+    .watch-quick-bar {
+        flex-direction: column;
+        gap: 12px;
+        align-items: flex-start;
+        padding: 12px;
+    }
+    .quick-bar-left {
+        gap: 12px;
+    }
+    .quick-bar-right {
+        width: 100%;
+        justify-content: space-between;
+        border-top: 1px solid rgba(255,255,255,0.05);
+        padding-top: 10px;
+    }
+}
+

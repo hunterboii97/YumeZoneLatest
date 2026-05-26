@@ -126,6 +126,58 @@
             </div>
             {% endif %}
 
+            <!-- Sleek Top Quick Settings & Navigation Bar -->
+            <div class="watch-quick-bar">
+                <div class="quick-bar-left">
+                    <label class="quick-toggle" id="q-autoplay">
+                        <input type="checkbox" id="chk-autoplay">
+                        <span class="indicator"></span>
+                        <span class="label">Autoplay</span>
+                    </label>
+                    <label class="quick-toggle" id="q-autoskip">
+                        <input type="checkbox" id="chk-autoskip">
+                        <span class="indicator"></span>
+                        <span class="label">Auto Skip</span>
+                    </label>
+                    <label class="quick-toggle" id="q-autonext">
+                        <input type="checkbox" id="chk-autonext">
+                        <span class="indicator"></span>
+                        <span class="label">Auto Next</span>
+                    </label>
+                    <button class="quick-btn" id="btn-shortcuts">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="quick-icon" style="margin-right: 4px;">
+                            <rect x="2" y="4" width="20" height="16" rx="2" ry="2"></rect>
+                            <line x1="6" y1="8" x2="6.01" y2="8"></line>
+                            <line x1="10" y1="8" x2="10.01" y2="8"></line>
+                            <line x1="14" y1="8" x2="14.01" y2="8"></line>
+                            <line x1="18" y1="8" x2="18.01" y2="8"></line>
+                            <line x1="6" y1="12" x2="6.01" y2="12"></line>
+                            <line x1="10" y1="12" x2="10.01" y2="12"></line>
+                            <line x1="14" y1="12" x2="14.01" y2="12"></line>
+                            <line x1="18" y1="12" x2="18.01" y2="12"></line>
+                            <line x1="7" y1="16" x2="17" y2="16"></line>
+                        </svg>
+                        <span>Shortcuts</span>
+                    </button>
+                    <button class="quick-btn" id="btn-lightsoff">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="quick-icon" style="margin-right: 4px;">
+                            <path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .5 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"></path>
+                            <line x1="9" y1="18" x2="15" y2="18"></line>
+                            <line x1="10" y1="22" x2="14" y2="22"></line>
+                        </svg>
+                        <span>Lights Off</span>
+                    </button>
+                    <button class="quick-btn" id="btn-native">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="quick-icon" style="margin-right: 4px;">
+                            <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+                            <line x1="8" y1="21" x2="16" y2="21"></line>
+                            <line x1="12" y1="17" x2="12" y2="21"></line>
+                        </svg>
+                        <span>Natv</span>
+                    </button>
+                </div>
+            </div>
+
 
 
             <!-- Episode Controls & Info Section -->
@@ -143,7 +195,7 @@
                             </svg>
                             Prev
                         </a>
-                        <a href="{% if next_episode_url %}{{ next_episode_url }}{% else %}javascript:void(0){% endif %}"
+                        <a id="next-episode-btn" href="{% if next_episode_url %}{{ next_episode_url }}{% else %}javascript:void(0){% endif %}"
                             class="btn btn-sm {% if not next_episode_url %}btn-ghost{% else %}btn-primary{% endif %}" {%
                             if next_episode_url %}onclick="window._forceEpisodeComplete = true;" {% else
                             %}onclick="return false;" aria-disabled="true" {% endif %}
@@ -768,6 +820,46 @@
 <!-- Toast Container -->
 <div id="toastContainer"
     style="position: fixed; bottom: 20px; right: 20px; z-index: 10000; display: flex; flex-direction: column; gap: 10px; pointer-events: none;">
+</div>
+
+<!-- Cinematic Lights Off Overlay -->
+<div class="lights-off-overlay" id="lights-off-overlay"></div>
+
+<!-- Keyboard Shortcuts Modal -->
+<div class="modal" id="shortcuts-modal" style="display: none; align-items: center; justify-content: center; z-index: 10010;">
+    <div class="modal-backdrop" id="close-shortcuts-backdrop" style="background: rgba(0,0,0,0.85); backdrop-filter: blur(5px);"></div>
+    <div class="modal-content" style="max-width: 450px; background: #0c0c0e; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 12px; color: #fff; padding: 24px; position: relative; z-index: 10015; width: 90%; box-shadow: 0 20px 50px rgba(0,0,0,0.8);">
+        <button type="button" class="modal-close" id="close-shortcuts-modal" aria-label="Close" style="background: none; border: none; color: #8a8a93; cursor: pointer; float: right; font-size: 1.2rem; margin-top: -5px; transition: color 0.2s;">✕</button>
+        <h3 style="margin-top: 0; margin-bottom: 20px; font-weight: 700; display: flex; align-items: center; gap: 8px; font-size: 1.2rem; color: #fff;">
+            <span>⌨</span> Keyboard Shortcuts
+        </h3>
+        <div style="display: flex; flex-direction: column; gap: 12px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 8px;">
+                <span style="color: #8a8a93; font-size: 0.9rem;">Play / Pause</span>
+                <span style="background: rgba(255,255,255,0.08); padding: 3px 8px; border-radius: 4px; font-family: monospace; font-size: 0.85rem; color: #cbd5e1; border: 1px solid rgba(255,255,255,0.05);">Space / K</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 8px;">
+                <span style="color: #8a8a93; font-size: 0.9rem;">Seek Forward</span>
+                <span style="background: rgba(255,255,255,0.08); padding: 3px 8px; border-radius: 4px; font-family: monospace; font-size: 0.85rem; color: #cbd5e1; border: 1px solid rgba(255,255,255,0.05);">→ / L</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 8px;">
+                <span style="color: #8a8a93; font-size: 0.9rem;">Seek Backward</span>
+                <span style="background: rgba(255,255,255,0.08); padding: 3px 8px; border-radius: 4px; font-family: monospace; font-size: 0.85rem; color: #cbd5e1; border: 1px solid rgba(255,255,255,0.05);">← / J</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 8px;">
+                <span style="color: #8a8a93; font-size: 0.9rem;">Volume Up / Down</span>
+                <span style="background: rgba(255,255,255,0.08); padding: 3px 8px; border-radius: 4px; font-family: monospace; font-size: 0.85rem; color: #cbd5e1; border: 1px solid rgba(255,255,255,0.05);">↑ / ↓</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 8px;">
+                <span style="color: #8a8a93; font-size: 0.9rem;">Mute / Unmute</span>
+                <span style="background: rgba(255,255,255,0.08); padding: 3px 8px; border-radius: 4px; font-family: monospace; font-size: 0.85rem; color: #cbd5e1; border: 1px solid rgba(255,255,255,0.05);">M</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: center; padding-bottom: 8px;">
+                <span style="color: #8a8a93; font-size: 0.9rem;">Toggle Fullscreen</span>
+                <span style="background: rgba(255,255,255,0.08); padding: 3px 8px; border-radius: 4px; font-family: monospace; font-size: 0.85rem; color: #cbd5e1; border: 1px solid rgba(255,255,255,0.05);">F</span>
+            </div>
+        </div>
+    </div>
 </div>
 
 {% endblock %}
