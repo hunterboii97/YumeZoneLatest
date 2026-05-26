@@ -737,6 +737,7 @@ def get_episodes_list_ajax(anime_id):
             pass
 
     anime = {}
+    mal_id = None
     if anime_info:
         if isinstance(anime_info, dict):
             anime = anime_info.get("info", anime_info)
@@ -746,6 +747,7 @@ def get_episodes_list_ajax(anime_id):
                     anilist_id = int(anilist_id)
                 except (ValueError, TypeError):
                     anilist_id = None
+            mal_id = anime.get("malId") or anime.get("malID")
 
     if not anime_id_clean.isdigit():
         anime_slug = anime_id_clean
@@ -783,7 +785,7 @@ def get_episodes_list_ajax(anime_id):
 
     from api.providers.miruro.episodes import PROVIDER_PRIORITY as _PP
 
-    allowed_hlss = ["kiwi", "ax-mimi", "ax-wave", "ax-shiro", "ax-yuki", "ax-zen", "bee"]
+    allowed_hlss = ["zenith", "kiwi", "ax-mimi", "ax-wave", "ax-shiro", "ax-yuki", "ax-zen", "bee"]
     sorted_providers = sorted(
         [p for p in providers_map.keys() if p in allowed_hlss],
         key=lambda p: _PP.index(p),
@@ -796,7 +798,7 @@ def get_episodes_list_ajax(anime_id):
         "episodes": all_episodes.get("episodes", []),
         "totalEpisodes": all_episodes.get("totalEpisodes", 0),
         "providers_map": providers_map,
-        "default_provider": "kiwi" if all_episodes.get("default_provider") == "zenith" else all_episodes.get("default_provider", "kiwi"),
+        "default_provider": all_episodes.get("default_provider", "kiwi"),
         "dub_available": dub_available,
         "sorted_providers": sorted_providers
     })
@@ -887,6 +889,14 @@ def check_hindi_dub_ajax(anime_id):
 
     anilist_id = None
     anime_info = INFO_CACHE.get(anime_id_clean)
+    if not anime_info:
+        try:
+            anime_info = asyncio.run(current_app.ha_scraper.get_anime_info(anime_id_clean))
+            if anime_info:
+                INFO_CACHE[anime_id_clean] = anime_info
+        except Exception:
+            pass
+
     if anime_info and isinstance(anime_info, dict):
         anime = anime_info.get("info", anime_info)
         anilist_id = anime.get("anilistId") or anime.get("alID")

@@ -195,6 +195,7 @@
             'ax-shiro': 'Shiro',
             'ax-yuki': 'Yuki',
             'ax-zen': 'Senku',
+            'ax-beep': 'Cosmic',
             'bee': 'Hachi'
         };
         return names[provider] || provider;

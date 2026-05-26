@@ -1541,6 +1541,9 @@ function loadAnimeXProgressively() {
             var addedAny = false;
             Object.keys(data.blocks).forEach(function(key) {
                 var providerKey = 'ax-' + key;
+                if (!PROVIDER_DISPLAY_NAMES[providerKey]) {
+                    return;
+                }
                 state.providers_map[providerKey] = data.blocks[key];
                 
                 state.providers = state.providers || [];
@@ -1583,6 +1586,20 @@ function loadHindiProgressively() {
                 btnDub.removeAttribute('title');
                 btnDub.onclick = function() { switchLanguage('dub'); };
                 btnDub.className = 'lang-btn' + (window._watchState.language === 'dub' ? ' active' : '');
+            }
+            
+            var state = window._watchState || {};
+            state.providers = state.providers || [];
+            if (!state.providers.includes('anixtv')) {
+                state.providers.push('anixtv');
+                state.providers_map = state.providers_map || {};
+                state.providers_map['anixtv'] = {
+                    "episodes": {
+                        "sub": [{"number": cfg.episodeNumber}],
+                        "dub": [{"number": cfg.episodeNumber}]
+                    }
+                };
+                renderServerPills();
             }
         }
     })
@@ -1636,10 +1653,14 @@ function renderServerPills() {
     
     sorted.forEach(function(p) {
         if (!hasEpisodeForProvider(p)) return; // Filter out not working/non-existent episode servers!
+        if (!PROVIDER_DISPLAY_NAMES[p]) return; // Bulletproof filter to only show named servers!
         
         var caps = _PROVIDER_CAPABILITIES[p] || {"hls": true, "embed": false};
-        if (caps.hls) hlsProviders.push(p);
-        if (caps.embed) embedProviders.push(p);
+        if (caps.hls) {
+            hlsProviders.push(p);
+        } else if (caps.embed) {
+            embedProviders.push(p);
+        }
     });
     
     var selectedProvider = state.provider || (window.WATCH_CONFIG || {}).provider;
@@ -1861,6 +1882,7 @@ document.addEventListener('DOMContentLoaded', function() {
             fetchAndLoadSources(true);
 
             // Progressive background loading tasks to reduce load time
+            setTimeout(loadZenithProgressively, 10);
             setTimeout(loadAnimeXProgressively, 50);
             setTimeout(loadHindiProgressively, 100);
         } else {
