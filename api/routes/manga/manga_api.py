@@ -187,6 +187,7 @@ def manga_image_proxy():
     - long-term CDN caching
     - domain protection
     - reduced memory usage
+    - local write-through caching for instant loads
     """
 
     image_url = request.args.get("url", "").strip()
@@ -205,6 +206,28 @@ def manga_image_proxy():
         return jsonify({
             "error": "Domain not allowed"
         }), 403
+
+    import hashlib
+    import os
+    from flask import current_app
+
+    # Calculate local cache filename
+    h = hashlib.md5(image_url.encode('utf-8')).hexdigest()
+    ext = 'jpg'
+    if '.png' in image_url.lower(): ext = 'png'
+    elif '.webp' in image_url.lower(): ext = 'webp'
+    elif '.gif' in image_url.lower(): ext = 'gif'
+    
+    filename = f"{h}.{ext}"
+    covers_dir = os.path.join(current_app.root_path, 'static', 'manga_covers')
+    filepath = os.path.join(covers_dir, filename)
+
+    # If already cached locally, serve it directly
+    if os.path.exists(filepath):
+        from flask import send_from_directory
+        response = send_from_directory(covers_dir, filename)
+        response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        return response
 
     headers = {
         "User-Agent": (
@@ -252,13 +275,22 @@ def manga_image_proxy():
             "image/jpeg"
         )
 
-        def generate():
-            for chunk in upstream.iter_content(chunk_size=8192):
-                if chunk:
-                    yield chunk
+        # Download and buffer for writing
+        response_bytes = bytearray()
+        for chunk in upstream.iter_content(chunk_size=8192):
+            if chunk:
+                response_bytes.extend(chunk)
+
+        # Write cache file asynchronously or synchronously
+        try:
+            os.makedirs(covers_dir, exist_ok=True)
+            with open(filepath, 'wb') as f:
+                f.write(response_bytes)
+        except Exception as write_err:
+            logger.error(f"Failed to write image to cache: {write_err}")
 
         response = Response(
-            stream_with_context(generate()),
+            bytes(response_bytes),
             content_type=content_type
         )
 

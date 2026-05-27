@@ -84,12 +84,30 @@ def create_app():
         """Proxy manga cover images through the image proxy to bypass referer restrictions."""
         if not url:
             return ''
-        from urllib.parse import quote
-        # Ensure url and referer are strings
         url = str(url) if url is not None else ''
         referer = str(referer) if referer is not None else ''
         if not url:
             return ''
+            
+        import hashlib
+        import os
+        
+        # Calculate local cache filename
+        h = hashlib.md5(url.encode('utf-8')).hexdigest()
+        ext = 'jpg'
+        if '.png' in url.lower(): ext = 'png'
+        elif '.webp' in url.lower(): ext = 'webp'
+        elif '.gif' in url.lower(): ext = 'gif'
+        
+        filename = f"{h}.{ext}"
+        try:
+            covers_dir = os.path.join(app.root_path, 'static', 'manga_covers')
+            if os.path.exists(os.path.join(covers_dir, filename)):
+                return f'/static/manga_covers/{filename}'
+        except Exception:
+            pass
+            
+        from urllib.parse import quote
         return f'/api/manga/image-proxy?url={quote(url, safe="")}&referer={quote(referer, safe="")}'
 
     app.jinja_env.filters['manga_cover'] = _manga_cover_proxy
