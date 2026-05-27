@@ -82,9 +82,12 @@ def _require_auth():
 
 @comments_api_bp.route("/comments", methods=["GET"])
 def list_comments():
-    """GET /api/comments?anime_id=&ep=<number>"""
+    """GET /api/comments?anime_id=&ep=<number>&page=<number>&limit=<number>"""
     anime_id = request.args.get("anime_id", "").strip()
     ep = request.args.get("ep", "")
+    page = max(1, int(request.args.get("page", 1)))
+    limit = max(1, min(100, int(request.args.get("limit", 15))))
+    
     if not anime_id or not ep:
         return jsonify({"success": False, "message": "Missing anime_id or ep"}), 400
     try:
@@ -92,8 +95,8 @@ def list_comments():
     except ValueError:
         return jsonify({"success": False, "message": "ep must be an integer"}), 400
 
-    comments = get_comments(anime_id, ep_num)
-    return jsonify({"success": True, "comments": comments, "count": len(comments)})
+    data = get_comments(anime_id, ep_num, page=page, limit=limit)
+    return jsonify({"success": True, **data})
 
 
 @comments_api_bp.route("/comments", methods=["POST"])

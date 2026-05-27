@@ -399,6 +399,50 @@ def api_delete_reported_comment(**kwargs):
 # API: Comments (mod actions)
 # ─────────────────────────────────────────────────────────────────────────────
 
+@admin_api_bp.route("/comments", methods=["GET"])
+@require_staff
+def api_admin_list_comments(**kwargs):
+    """Get paginated and searchable list of all comments for moderation."""
+    q = request.args.get("q", "").strip()
+    page = max(1, int(request.args.get("page", 1)))
+    limit = max(1, min(100, int(request.args.get("limit", 30))))
+    
+    query = {}
+    if q:
+        query["$or"] = [
+            {"body": {"$regex": q, "$options": "i"}},
+            {"author": {"$regex": q, "$options": "i"}},
+            {"anime_id": {"$regex": q, "$options": "i"}},
+        ]
+        
+    skip = max(0, (page - 1) * limit)
+    try:
+        from pymongo import DESCENDING
+        total = comments_collection.count_documents(query)
+        docs = list(
+            comments_collection.find(query)
+            .sort("created_at", DESCENDING)
+            .skip(skip)
+            .limit(limit)
+        )
+        
+        from ...models.comments import _serialize_comment
+        serialized = []
+        for d in docs:
+            serialized.append(_serialize_comment(d))
+            
+        return jsonify({
+            "success": True,
+            "comments": serialized,
+            "total": total,
+            "page": page,
+            "pages": max(1, (total + limit - 1) // limit)
+        })
+    except Exception as e:
+        logger.error(f"Mod comment list error: {e}")
+        return jsonify({"success": False, "message": "Failed to load comments"}), 500
+
+
 @admin_api_bp.route("/comments/<comment_id>/delete", methods=["POST"])
 @require_staff
 @limiter.limit("30 per minute")

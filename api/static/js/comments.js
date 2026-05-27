@@ -15,6 +15,11 @@ class CommentsManager {
         this.avatar = config.avatar || '';
         this.userId = config.userId || '';
 
+        // Pagination state
+        this.page = 1;
+        this.hasMore = false;
+        this.isLoadingMore = false;
+
         // GIF picker context: which form triggered it
         this._gifContext = null;    // 'main' | 'reply:<commentId>'
         this._gifUrl = { main: null };  // key -> selected gif url
@@ -123,26 +128,113 @@ class CommentsManager {
     async _loadComments() {
         const list = this.DOM.commentList;
         if (!list) return;
+        this.page = 1;
+        this.hasMore = false;
+        this.isLoadingMore = false;
         list.innerHTML = `<div class="comment-list-loading"><div class="comment-spinner"></div><span>Loading comments…</span></div>`;
         try {
-            const r = await fetch(`/api/comments?anime_id=${encodeURIComponent(this.animeId)}&ep=${this.episodeNum}`);
+            const r = await fetch(`/api/comments?anime_id=${encodeURIComponent(this.animeId)}&ep=${this.episodeNum}&page=1&limit=15`);
             if (!r.ok) throw new Error('fetch failed');
             const d = await r.json();
-            this._renderComments(d.comments || []);
+            
+            // clear loading spinner
+            list.innerHTML = '';
+            
+            if (this.DOM.commentTotalEl) this.DOM.commentTotalEl.textContent = d.total ?? 0;
+            
+            const comments = d.comments || [];
+            if (!comments.length) {
+                list.innerHTML = `<div class="comment-list-empty">No comments yet. Be the first to share your thoughts!</div>`;
+                return;
+            }
+            
+            // build comments container
+            const container = document.createElement('div');
+            container.className = 'comments-container';
+            list.appendChild(container);
+            
+            comments.forEach(c => container.appendChild(this._buildCommentEl(c, false)));
+            
+            this.hasMore = d.has_more;
+            if (this.hasMore) {
+                this._renderLoadMoreButton();
+            }
         } catch (_) {
             list.innerHTML = `<div class="comment-list-empty">Failed to load comments. Please try again later.</div>`;
         }
     }
 
-    _renderComments(comments) {
+    _renderLoadMoreButton() {
         const list = this.DOM.commentList;
-        if (this.DOM.commentTotalEl) this.DOM.commentTotalEl.textContent = comments.length;
-        if (!comments.length) {
-            list.innerHTML = `<div class="comment-list-empty">No comments yet. Be the first to share your thoughts!</div>`;
-            return;
+        let btn = document.getElementById('load-more-comments-btn');
+        if (btn) btn.remove();
+        
+        btn = document.createElement('button');
+        btn.id = 'load-more-comments-btn';
+        btn.className = 'load-more-btn';
+        btn.innerHTML = `
+            <span>Load More Comments</span>
+            <svg class="btn-spinner" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" style="display:none; animation: commentSpin 0.7s linear infinite; margin-left: 8px;">
+                <circle cx="12" cy="12" r="10" stroke-opacity="0.25"></circle>
+                <path d="M12 2a10 10 0 0 1 10 10"></path>
+            </svg>
+        `;
+        btn.addEventListener('click', () => this._loadMoreComments());
+        list.appendChild(btn);
+    }
+
+    async _loadMoreComments() {
+        if (this.isLoadingMore || !this.hasMore) return;
+        this.isLoadingMore = true;
+        
+        const btn = document.getElementById('load-more-comments-btn');
+        if (btn) {
+            btn.classList.add('loading');
+            btn.querySelector('span').textContent = 'Loading…';
+            btn.querySelector('.btn-spinner').style.display = 'inline-block';
         }
-        list.innerHTML = '';
-        comments.forEach(c => list.appendChild(this._buildCommentEl(c, false)));
+        
+        try {
+            const nextPage = this.page + 1;
+            const r = await fetch(`/api/comments?anime_id=${encodeURIComponent(this.animeId)}&ep=${this.episodeNum}&page=${nextPage}&limit=15`);
+            if (!r.ok) throw new Error('fetch failed');
+            const d = await r.json();
+            
+            const comments = d.comments || [];
+            const container = this.DOM.commentList.querySelector('.comments-container');
+            if (container && comments.length) {
+                comments.forEach(c => {
+                    const el = this._buildCommentEl(c, false);
+                    el.style.opacity = '0';
+                    container.appendChild(el);
+                    // Trigger reflow & slide-in animation
+                    void el.offsetWidth;
+                    el.style.opacity = '1';
+                });
+            }
+            
+            this.page = nextPage;
+            this.hasMore = d.has_more;
+            
+            if (btn) {
+                btn.classList.remove('loading');
+                btn.querySelector('span').textContent = 'Load More Comments';
+                btn.querySelector('.btn-spinner').style.display = 'none';
+            }
+            
+            if (!this.hasMore) {
+                if (btn) btn.remove();
+            }
+        } catch (_) {
+            this._showToast('Failed to load more comments.', 'error');
+            if (btn) {
+                btn.classList.remove('loading');
+                btn.querySelector('span').textContent = 'Load More Comments';
+                btn.querySelector('.btn-spinner').style.display = 'none';
+            }
+        } finally {
+            this.isLoadingMore = false;
+        }
     }
 
     _buildCommentEl(comment, isReply) {
@@ -204,10 +296,18 @@ class CommentsManager {
             `;
         }
 
+        let badgeHTML = '';
+        if (comment.author_role === 'admin') {
+            badgeHTML = `<span class="staff-badge admin-badge"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-right:3px; vertical-align: middle;"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>Admin</span>`;
+        } else if (comment.author_role === 'mod') {
+            badgeHTML = `<span class="staff-badge mod-badge"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-right:3px; vertical-align: middle;"><polygon points="12 2 2 7 12 12 22 7 12 2"/></svg>Mod</span>`;
+        }
+
         wrapper.innerHTML = `
             <div class="comment-header">
                 ${avatarHTML}
                 <span class="comment-author">${this._esc(comment.author)}</span>
+                ${badgeHTML}
                 <span class="comment-time" title="${this._absoluteTime(comment.created_at)}">
                     ${this._relativeTime(comment.created_at)}
                     ${comment.edited_at ? `<span title="Edited at ${this._absoluteTime(comment.edited_at)}"> (edited)</span>` : ''}
@@ -314,6 +414,26 @@ class CommentsManager {
     _bindMainCommentForm() {
         if (!this.DOM.mainSubmitBtn) return;
         this.DOM.mainSubmitBtn.addEventListener('click', () => this._submitComment());
+        
+        // Dynamically inject main character counter
+        const actionsArea = this.DOM.commentForm?.querySelector('.comment-input-actions');
+        if (actionsArea && !actionsArea.querySelector('.char-counter')) {
+            const counter = document.createElement('div');
+            counter.className = 'char-counter';
+            counter.textContent = '0 / 2000';
+            actionsArea.insertBefore(counter, actionsArea.firstChild);
+            
+            this.DOM.mainTextarea?.addEventListener('input', () => {
+                const len = this.DOM.mainTextarea.value.length;
+                counter.textContent = `${len} / 2000`;
+                counter.classList.toggle('warning', len > 1800);
+                counter.classList.toggle('danger', len > 2000);
+                if (this.DOM.mainSubmitBtn) {
+                    this.DOM.mainSubmitBtn.disabled = len > 2000;
+                }
+            });
+        }
+
         this.DOM.mainTextarea?.addEventListener('keydown', e => {
             if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
@@ -336,6 +456,7 @@ class CommentsManager {
         const body = this.DOM.mainTextarea?.value.trim() || '';
         const gifUrl = this._gifUrl.main || null;
         if (!body && !gifUrl) return;
+        if (body.length > 2000) return; // Prevent posting too long comments
 
         this.DOM.mainSubmitBtn.disabled = true;
         this.DOM.mainSubmitBtn.innerHTML = `<div class="comment-spinner" style="width:16px;height:16px;border-width:2px;border-top-color:#fff;"></div>`;
@@ -357,7 +478,11 @@ class CommentsManager {
                 return;
             }
             // Reset form
-            if (this.DOM.mainTextarea) this.DOM.mainTextarea.value = '';
+            if (this.DOM.mainTextarea) {
+                this.DOM.mainTextarea.value = '';
+                const mainCounter = this.DOM.commentForm?.querySelector('.char-counter');
+                if (mainCounter) mainCounter.textContent = '0 / 2000';
+            }
             this._gifUrl.main = null;
             if (this.DOM.mainGifPreview) this.DOM.mainGifPreview.style.display = 'none';
             if (this.DOM.mainGifImg) this.DOM.mainGifImg.src = '';
@@ -367,7 +492,15 @@ class CommentsManager {
             const list = this.DOM.commentList;
             const empty = list.querySelector('.comment-list-empty');
             if (empty) empty.remove();
-            list.insertBefore(el, list.firstChild);
+            
+            let container = list.querySelector('.comments-container');
+            if (!container) {
+                container = document.createElement('div');
+                container.className = 'comments-container';
+                list.innerHTML = '';
+                list.appendChild(container);
+            }
+            container.insertBefore(el, container.firstChild);
 
             // Update count
             const cur = parseInt(this.DOM.commentTotalEl?.textContent || '0');
@@ -419,6 +552,7 @@ class CommentsManager {
                     </div>
                 </div>
                 <div class="reply-form-actions">
+                    <div class="char-counter" id="reply-char-counter-${commentId}">0 / 2000</div>
                     <button type="button" class="comment-gif-btn" id="reply-gif-btn-${commentId}" title="Add GIF">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
                         <span>GIF</span>
@@ -439,8 +573,21 @@ class CommentsManager {
         const gifPreview = container.querySelector(`#reply-gif-preview-${commentId}`);
         const gifImg = container.querySelector(`#reply-gif-img-${commentId}`);
         const gifRemove = container.querySelector(`#reply-gif-remove-${commentId}`);
+        const replyCounter = container.querySelector(`#reply-char-counter-${commentId}`);
 
         textarea?.focus();
+
+        textarea?.addEventListener('input', () => {
+            const len = textarea.value.length;
+            if (replyCounter) {
+                replyCounter.textContent = `${len} / 2000`;
+                replyCounter.classList.toggle('warning', len > 1800);
+                replyCounter.classList.toggle('danger', len > 2000);
+            }
+            if (submitBtn) {
+                submitBtn.disabled = len > 2000;
+            }
+        });
 
         gifBtn?.addEventListener('click', (e) => {
             this._gifContext = replyKey;
@@ -463,6 +610,7 @@ class CommentsManager {
             const body = textarea?.value.trim() || '';
             const gifUrl = this._gifUrl[replyKey] || null;
             if (!body && !gifUrl) return;
+            if (body.length > 2000) return;
 
             submitBtn.disabled = true;
             submitBtn.innerHTML = `<div class="comment-spinner" style="width:16px;height:16px;border-width:2px;border-top-color:#fff;"></div>`;
@@ -561,6 +709,7 @@ class CommentsManager {
                 </div>
             </div>
             <div class="reply-form-actions">
+                <div class="char-counter" id="edit-char-counter-${comment._id}">${comment.body?.length ?? 0} / 2000</div>
                 <button type="button" class="comment-gif-btn" id="edit-gif-btn-${comment._id}" title="Add GIF">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
                     <span>GIF</span>
@@ -582,9 +731,22 @@ class CommentsManager {
         const gifPreview = container.querySelector(`#edit-gif-preview-${comment._id}`);
         const gifImg = container.querySelector(`#edit-gif-img-${comment._id}`);
         const gifRemove = container.querySelector(`#edit-gif-remove-${comment._id}`);
+        const editCounter = container.querySelector(`#edit-char-counter-${comment._id}`);
 
         textarea.focus();
         textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+
+        textarea?.addEventListener('input', () => {
+            const len = textarea.value.length;
+            if (editCounter) {
+                editCounter.textContent = `${len} / 2000`;
+                editCounter.classList.toggle('warning', len > 1800);
+                editCounter.classList.toggle('danger', len > 2000);
+            }
+            if (submitBtn) {
+                submitBtn.disabled = len > 2000;
+            }
+        });
 
         const closeEdit = () => {
             wrapper.classList.remove('is-editing');
@@ -609,6 +771,7 @@ class CommentsManager {
             const body = textarea.value.trim();
             const gifUrl = this._gifUrl[editKey] || null;
             if (!body && !gifUrl) return;
+            if (body.length > 2000) return;
 
             submitBtn.disabled = true;
             submitBtn.innerHTML = `<div class="comment-spinner" style="width:16px;height:16px;border-width:2px;border-top-color:#fff;"></div>`;

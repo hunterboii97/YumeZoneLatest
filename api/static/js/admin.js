@@ -5,8 +5,8 @@
     'use strict';
     const API = '/api/admin';
     let currentTab = 'dashboard';
-    let usersPage = 1, reportsPage = 1, logsPage = 1;
-    let userSearchTimer = null;
+    let usersPage = 1, reportsPage = 1, logsPage = 1, commentsPage = 1;
+    let userSearchTimer = null, commentSearchTimer = null;
 
     // ── Helpers ──────────────────────────────────────────────────
     function $(sel) { return document.querySelector(sel); }
@@ -117,6 +117,7 @@
         if (tab === 'dashboard') loadDashboard();
         else if (tab === 'users') loadUsers();
         else if (tab === 'reports') loadReports();
+        else if (tab === 'comments') loadComments();
         else if (tab === 'logs') loadLogs();
     }
 
@@ -379,6 +380,82 @@
         }).join('');
     }
 
+    // ── Comments Moderation ─────────────────────────────────────
+    async function loadComments(page) {
+        if (page) commentsPage = page;
+        const q = $('#comment-search-input')?.value.trim() || '';
+        try {
+            const d = await api(`/comments?q=${encodeURIComponent(q)}&page=${commentsPage}`);
+            renderCommentsTable(d.comments || []);
+            pagination('comments-pagination', d.page, d.pages, loadComments);
+        } catch (e) { toast(e.message, 'error'); }
+    }
+
+    function renderCommentsTable(comments) {
+        const tbody = $('#comments-tbody');
+        if (!tbody) return;
+        if (!comments.length) { tbody.innerHTML = '<tr><td colspan="5" class="admin-empty">No comments found</td></tr>'; return; }
+        tbody.innerHTML = comments.map(c => {
+            const hasGif = c.gif_url ? `<div class="admin-comment-gif-preview"><img src="${esc(c.gif_url)}" alt="GIF" style="max-height: 40px; border-radius: 4px; display: block; margin-top: 4px;"></div>` : '';
+            const animeNameText = c.anime_id ? `<strong>${esc(c.anime_id)}</strong>` : '—';
+            const epText = c.episode_number !== undefined ? `Ep ${c.episode_number}` : '—';
+            
+            // Check if deleted
+            const contentHTML = c.deleted 
+                ? `<span style="color:var(--admin-text-muted); font-style:italic;">[Deleted comment]</span>`
+                : `<div>${esc(c.body)}</div>${hasGif}`;
+                
+            let actionBtn = '';
+            if (!c.deleted) {
+                actionBtn = `<button class="admin-btn admin-btn-danger admin-btn-sm" onclick="window._deleteComment('${c._id}')">Delete</button>`;
+            } else {
+                actionBtn = `<span style="color:var(--admin-text-muted); font-size:12px; font-weight:600;">Deleted</span>`;
+            }
+            
+            return `
+                <tr>
+                    <td>
+                        <div class="user-cell">
+                            <img src="${avatarUrl(c.avatar, c.author)}" alt="" onerror="this.src='${avatarUrl(null, c.author)}'">
+                            <div class="user-cell-info">
+                                <span class="user-cell-name">${esc(c.author)}</span>
+                                ${roleBadge(c.author_role || 'user')}
+                            </div>
+                        </div>
+                    </td>
+                    <td style="max-width: 350px; word-break: break-word;">${contentHTML}</td>
+                    <td>
+                        <div style="display:flex; flex-direction:column; gap:2px;">
+                            <span>${animeNameText}</span>
+                            <span style="font-size:12px; color:var(--admin-text-muted)">${epText}</span>
+                        </div>
+                    </td>
+                    <td>${timeAgo(c.created_at)}</td>
+                    <td>
+                        <div class="admin-btn-group">
+                            ${actionBtn}
+                        </div>
+                    </td>
+                </tr>`;
+        }).join('');
+    }
+
+    window._deleteComment = async function (id) {
+        const reason = prompt('Enter deletion reason (optional):');
+        if (reason === null) return; // cancelled
+        try {
+            await api(`/comments/${id}/delete`, {
+                method: 'POST',
+                body: JSON.stringify({ reason: reason || 'Violation of platform guidelines' })
+            });
+            toast('Comment deleted successfully');
+            loadComments();
+            loadDashboard(); // Refresh stats
+        } catch (e) {
+            toast(e.message, 'error');
+        }
+    };
+
     // ── Modal helpers ───────────────────────────────────────────
     window.closeModal = function (id) { document.getElementById(id).style.display = 'none'; };
 
@@ -405,6 +482,12 @@
             userSearchTimer = setTimeout(() => { usersPage = 1; loadUsers(); }, 400);
         });
         $('#user-role-filter')?.addEventListener('change', () => { usersPage = 1; loadUsers(); });
+
+        // Comment search
+        $('#comment-search-input')?.addEventListener('input', () => {
+            clearTimeout(commentSearchTimer);
+            commentSearchTimer = setTimeout(() => { commentsPage = 1; loadComments(); }, 400);
+        });
 
         // Report filters
         $('#report-status-filter')?.addEventListener('change', () => { reportsPage = 1; loadReports(); });
