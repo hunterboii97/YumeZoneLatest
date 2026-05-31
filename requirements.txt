@@ -10,3 +10,5 @@ httpx
 python-snappy
 curl-cffi
 Flask-Limiter
+cachetools
+gunicorn[gevent]
